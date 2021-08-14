@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdarg.h>
+#include <string.h>
 
 Uxn u;
 static Device *devsystem, *devconsole;
@@ -22,20 +24,31 @@ static char mem[MEM_ROWS][MEM_COLS][3];
 int mem_offset = 0x100;
 static char stack[STACK_ROWS][STACK_COLS][3];
 
-static char log[65536];
+static char console_buffer[65536];
+static int console_updated = 0;
 
-static void write_log(const char *msg) {
-  if (log[0]) {
-    strcat(log, "\n");
-  }
-  strcat(log, msg);
+static void console(const char *format, ...) {
+  char msg[1024];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(msg, sizeof(msg), format, args);
+  va_end(args);
+  strcat(console_buffer, msg);
+  console_updated = 1;
+}
+
+static int
+error(char *msg, const char *err)
+{
+	console("Error %s: %s\n", msg, err);
+	return 0;
 }
 
 static const char *errors[] = {"underflow", "overflow", "division by zero"};
 
 int uxn_halt(Uxn *u, Uint8 error, char *name, int id) {
-  // fprintf(stderr, "Halted: %s %s#%04x, at 0x%04x\n", name, errors[error - 1],
-  // id, u->ram.ptr);
+  console("Halted: %s %s#%04x, at 0x%04x\n", name, errors[error - 1],
+  id, u->ram.ptr);
   u->ram.ptr = 0;
   return 0;
 }
@@ -45,9 +58,7 @@ static int load(Uxn *u, char *filepath) {
   if (!(f = fopen(filepath, "rb")))
     return 0;
   fread(u->ram.dat + PAGE_PROGRAM, sizeof(u->ram.dat) - PAGE_PROGRAM, 1, f);
-  char buffer[1024];
-  snprintf(buffer, sizeof(buffer), "Loaded %s\n", filepath);
-  write_log(buffer);
+  console("Loaded %s\n", filepath);
   return 1;
 }
 
@@ -59,15 +70,15 @@ system_talk(Device *d, Uint8 b0, Uint8 w)
 		d->dat[0x3] = d->u->rst.ptr;
 	} else if(b0 == 0xe) {
 		Uint8 x, y;
-		fprintf(stderr, "\n\n");
+		console("\n\n");
 		for(y = 0; y < 0x08; ++y) {
 			for(x = 0; x < 0x08; ++x) {
 				Uint8 p = y * 0x08 + x;
-				fprintf(stderr,
+				console(
 					p == d->u->wst.ptr ? "[%02x]" : " %02x ",
 					d->u->wst.dat[p]);
 			}
-			fprintf(stderr, "\n");
+			console("\n");
 		}
 	} else if(b0 == 0xf)
 		d->u->ram.ptr = 0x0000;
@@ -91,10 +102,10 @@ file_talk(Device *d, Uint8 b0, Uint8 w)
 		Uint16 addr = mempeek16(d->dat, b0 - 1);
 		FILE *f = fopen(name, read ? "r" : (offset ? "a" : "w"));
 		if(f) {
-			fprintf(stderr, "%s %s %s #%04x, ", read ? "Loading" : "Saving", name, read ? "to" : "from", addr);
+			console(stderr, "%s %s %s #%04x, ", read ? "Loading" : "Saving", name, read ? "to" : "from", addr);
 			if(fseek(f, offset, SEEK_SET) != -1)
 				result = read ? fread(&d->mem[addr], 1, length, f) : fwrite(&d->mem[addr], 1, length, f);
-			fprintf(stderr, "%04x bytes\n", result);
+			console(stderr, "%04x bytes\n", result);
 			fclose(f);
 		}
 		mempoke16(d->dat, 0x2, result);
@@ -172,9 +183,6 @@ static void uxn_memory(mu_Context *ctx) {
         (int[]){20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20},
         0);
     for (int y = 0; y < MEM_ROWS; y++) {
-      char buffer[6];
-      snprintf(buffer, sizeof(buffer), "#%.6X", y * 0x10 + mem_offset);
-      /*mu_text(ctx, buffer);*/
       for (int x = 0; x < MEM_COLS; x++) {
         if(mem_offset + y * MEM_COLS + x == u.ram.ptr)
           ctx->style->colors[MU_COLOR_BASE] = RAM_PTR_COLOR;
@@ -215,30 +223,29 @@ static void uxn_stack(mu_Context *ctx) {
 
 static void controls(mu_Context *ctx) {
   if (mu_begin_window(ctx, "Controls", mu_rect(40, 300, 300, 200))) {
-
+    mu_text(ctx, "Console");
     mu_layout_row(ctx, 1, (int[]){-1}, -25);
-    mu_begin_panel(ctx, "Log Output");
+    mu_begin_panel(ctx, "Console");
     mu_Container *panel = mu_get_current_container(ctx);
     mu_layout_row(ctx, 1, (int[]){-1}, -1);
-    mu_text(ctx, log);
+    mu_text(ctx, console_buffer);
     mu_end_panel(ctx);
+    if (console_updated) {
+      panel->scroll.y = panel->content_size.y;
+      console_updated = 0;
+    }
 
-    mu_layout_row(ctx, 5, (int[]){40, 40, 40, 40, 40}, 20);
-    if (mu_button(ctx, "log"))
-      write_log("test log");
+    mu_layout_row(ctx, 4, (int[]){40, 40, 40, 40}, 20);
     if (mu_button(ctx, "boot")) {
       if (!uxn_boot(&u))
-        write_log("Boot failed");
+        console("Boot failed");
     }
-
     if (mu_button(ctx, "load")) {
       if (!load(&u, rom))
-        write_log("Load failed");
+        console("Load failed");
     }
-
     if(mu_button(ctx, "devices"))
       uxn_devices(&u);
-    
     if(mu_button(ctx, "run"))
       run(&u);
 
