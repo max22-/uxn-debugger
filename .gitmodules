@@ -1,0 +1,6 @@
+[submodule "microui"]
+	path = microui
+	url = https://github.com/rxi/microui
+[submodule "uxn"]
+	path = uxn
+	url = https://git.sr.ht/~rabbits/uxn
