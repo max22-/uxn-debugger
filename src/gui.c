@@ -207,7 +207,7 @@ static void uxn_stack(mu_Context *ctx) {
                             20, 20, 20},
                     0);
       for (int x = 0; x < STACK_COLS; x++) {
-        if(y * MEM_COLS + x == u.ram.ptr)
+        if(y * MEM_COLS + x == u.wst.ptr)
           ctx->style->colors[MU_COLOR_BASE] = WST_PTR_COLOR;
         else
           ctx->style->colors[MU_COLOR_BASE] = saved_base_color;
@@ -248,8 +248,10 @@ static void controls(mu_Context *ctx) {
       uxn_devices(&u);
     if(mu_button(ctx, "run"))
       run(&u);
-
-
+    if(mu_button(ctx, "init step"))
+      uxn_init_eval(&u, PAGE_PROGRAM);
+    if(mu_button(ctx, "step"))
+      uxn_step(&u);
     mu_end_window(ctx);
   }
 }
