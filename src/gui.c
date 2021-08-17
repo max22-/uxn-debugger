@@ -10,6 +10,13 @@ Uxn u;
 static Device *devsystem, *devconsole;
 extern char *rom;
 
+static const char *op_name[] = {
+	"BRK", "LIT", "POP", "DUP", "NIP", "SWP", "OVR", "ROT",
+	"EQU", "NEQ", "GTH", "LTH", "JMP", "JCN", "JSR", "STH", 
+	"LDZ", "STZ", "LDR", "STR", "LDA", "STA", "DEI", "DEO",
+	"ADD", "SUB", "MUL", "DIV", "AND", "ORA", "EOR", "SFT"
+};
+
 #define MEM_COLS 16
 #define MEM_ROWS 8
 #define STACK_COLS 16
@@ -175,9 +182,20 @@ static void uxn_memory(mu_Context *ctx) {
     mu_layout_row(ctx, 2, (int[]){40, 40}, 0);
     mu_text(ctx, "offset:");
     static char buffer[5];
-    snprintf(buffer, sizeof(buffer), "%.X", mem_offset);
+    snprintf(buffer, sizeof(buffer), "%X", mem_offset);
     if(mu_textbox(ctx, buffer, 5))
       mem_offset = strtol(buffer, NULL, 16);
+    mu_text(ctx, "op:");
+    static opname_buf[10];
+    Uint8 op = u.ram.dat[u.ram.ptr];
+    snprintf(opname_buf, sizeof(opname_buf), op_name[u.ram.dat[u.ram.ptr] & 0x1f]);
+    if(op & 0x20)
+      strcat(opname_buf, "2");
+    if(op & 0x80)
+      strcat(opname_buf, "k");
+    if(op & 0x40)
+      strcat(opname_buf, "r");
+    mu_textbox(ctx, opname_buf, sizeof(opname_buf));
     mu_layout_row(
         ctx, MEM_COLS,
         (int[]){20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20},
